@@ -115,6 +115,25 @@
 <div id="post-sec" class="content-section">
     <div class="profile-card" style="border: 2px solid dodgerblue;">
         <h4>Create a Post</h4>
+        <select id="post-category">
+            <option value="General">General</option>
+            <option value="Coding">Coding</option>
+            <option value="Design">Design</option>
+        </select>
+        <textarea id="post-caption" placeholder="Work details likhein..."></textarea>
+        <button onclick="addNewPost()">Post Now</button>
+    </div>
+    
+    <div style="padding: 10px;">
+        Filter by: 
+        <select id="filter-category" onchange="loadLiveFeed()">
+            <option value="All">All</option>
+            <option value="Coding">Coding</option>
+            <option value="Design">Design</option>
+        </select>
+    </div>
+
+    <div id="news-feed"></div>
         <textarea id="post-caption" placeholder="What's on your mind?"></textarea>
         <input type="file" id="post-image" accept="image/*" style="margin-bottom: 10px;">
        <img id="post-preview" src="" style="display: none; width: 100px; height: 100px; object-fit: cover; margin-bottom: 10px; border-radius: 5px;">
@@ -313,7 +332,7 @@ function handleTrustClick(button) {
             document.getElementById('start-page').style.display = 'none';
             document.getElementById('main-app').style.display = 'block';
             showSection('profile-sec'); // Default page
-        }
+      .app",  }
 
         function toggleMenu() {
             let side = document.getElementById('sidebar');
@@ -331,14 +350,19 @@ function handleTrustClick(button) {
     </script>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-  import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, where, getDocs, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+  import { 
+    getFirestore, doc, setDoc, getDoc, collection, addDoc, query, where, 
+    getDocs, orderBy, onSnapshot, serverTimestamp, updateDoc, increment 
+  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+  import { 
+    getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged 
+  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyD7gzrx72gzmFffkIHxMLyKJP1812wvvh8",
     authDomain: "syncup-web.firebaseapp.com",
     projectId: "syncup-web",
-    storageBucket: "syncup-web.firebasestorage.app",
+    storageBucket: "syncup-web.appspot.com",
     messagingSenderId: "338126062388",
     appId: "1:338126062388:web:c12443230d0d4cd1875b61"
   };
@@ -347,117 +371,201 @@ function handleTrustClick(button) {
   const db = getFirestore(app);
   const auth = getAuth(app);
 
-  // --- AUTH LOGIC ---
+  // --- 1. UNIQUE USERNAME & SIGNUP LOGIC ---
   window.doLogin = async function() {
-      // Check if user is using signup or login form
       const isSignup = document.getElementById('signup-form').style.display === 'block';
-      const userInput = isSignup ? document.getElementById('s-user').value : document.getElementById('l-user').value;
+      const userInput = isSignup ? document.getElementById('s-user').value.trim().toLowerCase() : document.getElementById('l-user').value.trim().toLowerCase();
       const passInput = isSignup ? document.getElementById('s-pass').value : document.getElementById('l-pass').value;
 
-      if(!userInput || !passInput) return alert("Please fill all fields");
+      if(!userInput || !passInput) return alert("Fields khali mat chhodiye!");
+
       const email = userInput.includes("@") ? userInput : userInput + "@syncup.com";
 
       try {
           if (isSignup) {
-              await createUserWithEmailAndPassword(auth, email, passInput);
-              alert("Signup Successful!");
+              // Check if username already exists in Firestore
+              const q = query(collection(db, "users"), where("username", "==", userInput));
+              const querySnapshot = await getDocs(q);
+              if (!querySnapshot.empty) return alert("Yeh username pehle se liya ja chuka hai!");
+
+              const res = await createUserWithEmailAndPassword(auth, email, passInput);
+              // Create initial profile
+              await setDoc(doc(db, "users", res.user.uid), {
+                  username: userInput,
+                  fullName: "",
+                  skills: "",
+                  createdAt: serverTimestamp()
+              });
+              alert("Account ban gaya!");
           } else {
               await signInWithEmailAndPassword(auth, email, passInput);
           }
-          document.getElementById('start-page').style.display = 'none';
-          document.getElementById('main-app').style.display = 'block';
-          loadUserProfile();
       } catch (e) {
           alert("Error: " + e.message);
       }
   }
 
-  // --- PROFILE SAVE & LOAD ---
-  window.saveProfile = async function() {
-      const user = auth.currentUser;
-      if(!user) return alert("Please log in first");
-
-      const profileData = {
-          username: document.getElementById('p-username').value.toLowerCase(), // lowercase for easy search
-          fullName: document.getElementById('p-fullname').value,
-          skills: document.getElementById('p-skills').value,
-          updatedAt: serverTimestamp()
-      };
-
-      await setDoc(doc(db, "users", user.uid), profileData);
-      alert("Profile Saved Successfully!");
-  }
-
-  async function loadUserProfile() {
-      const user = auth.currentUser;
-      const docSnap = await getDoc(doc(db, "users", user.uid));
-      if (docSnap.exists()) {
-          const data = docSnap.data();
-          document.getElementById('p-username').value = data.username || "";
-          document.getElementById('p-fullname').value = data.fullName || "";
-          document.getElementById('p-skills').value = data.skills || "";
-      }
-  }
-
-  // --- SEARCH USER FEATURE ---
-  window.searchUser = async function() {
-      const searchTerm = document.getElementById('search-input').value.toLowerCase();
-      if(!searchTerm) return;
-
-      const q = query(collection(db, "users"), where("username", "==", searchTerm));
-      const querySnapshot = await getDocs(q);
-
-      if (querySnapshot.empty) {
-          alert("No user found with this username");
-      } else {
-          querySnapshot.forEach((doc) => {
-              const data = doc.data();
-              alert(`User Found!\nName: ${data.fullName}\nSkills: ${data.skills}`);
-              // Aap yahan ek popup bhi bana sakte hain profile dikhane ke liye
+  // --- 2. REAL-TIME NEWS FEED (Har waqt update rahega) ---
+  function loadLiveFeed() {
+      const q = query(collection(db, "posts"), orderBy("timestamp", "desc"));
+      onSnapshot(q, (snapshot) => {
+          const feed = document.getElementById('news-feed');
+          feed.innerHTML = ""; // Clear current feed
+          snapshot.forEach((postDoc) => {
+              const post = postDoc.data();
+              const postID = postDoc.id;
+              
+              const postHTML = `
+                  <div class="post-card">
+                      <strong>@${post.username}</strong>
+                      <p>${post.caption}</p>
+                      <div class="trust-btns">
+                          <button class="btn-trust" onclick="handleTrust('${postID}', 'trustCount')">Trusted (${post.trustCount || 0})</button>
+                          <button class="btn-untrust" onclick="handleTrust('${postID}', 'untrustCount')">Not Trusted (${post.untrustCount || 0})</button>
+                      </div>
+                      <button onclick="joinWork('${postID}', '${post.username}')" style="margin-top:10px; background:orange;">Join & Chat</button>
+                  </div>`;
+              feed.insertAdjacentHTML('beforeend', postHTML);
           });
+      });
+  }
+
+  // --- 3. TRUST BUTTON LOGIC (Database Update) ---
+  window.handleTrust = async function(postId, field) {
+      if(!auth.currentUser) return alert("Pehle login karein!");
+      const postRef = doc(db, "posts", postId);
+      try {
+          await updateDoc(postRef, { [field]: increment(1) });
+      } catch (e) {
+          console.error("Update fail:", e);
       }
   }
 
-  // Monitor Auth State
+  // --- 4. JOIN & CHAT SIMULATION ---
+  window.joinWork = function(postId, owner) {
+      alert(`Aap @${owner} ke work group mein enter kar rahe hain. (Chat UI Next Update mein aayega)`);
+      // Yahan aap window.location.href use karke chat page par bhej sakte hain
+  }
+
+  // --- 5. SEARCH LOGIC ---
+  window.searchUser = async function() {
+      const term = document.getElementById('search-input').value.toLowerCase();
+      const q = query(collection(db, "users"), where("username", "==", term));
+      const snap = await getDocs(q);
+      if(snap.empty) return alert("User nahi mila!");
+      snap.forEach(d => alert(`User: ${d.data().username}\nSkills: ${d.data().skills}`));
+  }
+
+  // Monitor Login State
   onAuthStateChanged(auth, (user) => {
       if (user) {
           document.getElementById('start-page').style.display = 'none';
           document.getElementById('main-app').style.display = 'block';
+          loadLiveFeed(); // Load posts as soon as logged in
           loadUserProfile();
       }
   });
-window.addNewPost = async function() {
-    const caption = document.getElementById('post-caption').value;
-    const user = auth.currentUser;
-    
-    if(!user) return alert("Pehle Login karein!");
-    if(!caption.trim()) return alert("Kuch toh likhiye!");
 
-    try {
-        await addDoc(collection(db, "posts"), {
-            caption: caption,
-            username: document.getElementById('p-username').value || "User",
-            uid: user.uid,
-            trustCount: 0,
-            timestamp: serverTimestamp()
+// --- 6. FILTERED LIVE FEED ---
+window.loadLiveFeed = function() {
+    const filterValue = document.getElementById('filter-category').value;
+    let q = query(collection(db, "posts"), orderBy("timestamp", "desc"));
+    
+    // Agar filter 'All' nahi hai toh query update karein
+    if (filterValue !== "All") {
+        q = query(collection(db, "posts"), where("category", "==", filterValue), orderBy("timestamp", "desc"));
+    }
+
+    onSnapshot(q, (snapshot) => {
+        const feed = document.getElementById('news-feed');
+        feed.innerHTML = ""; 
+        snapshot.forEach((postDoc) => {
+            const post = postDoc.data();
+            const postID = postDoc.id;
+            feed.insertAdjacentHTML('beforeend', `
+                <div class="post-card">
+                    <small style="color:blue;">#${post.category}</small><br>
+                    <strong>@${post.username}</strong>
+                    <p>${post.caption}</p>
+                    <button class="btn-trust" onclick="handleTrust('${postID}', 'trustCount', '${post.uid}')">Trusted (${post.trustCount || 0})</button>
+                    <button onclick="enterChat('${postID}')" style="background:orange;">Join Work Chat</button>
+                </div>`);
         });
-        document.getElementById('post-caption').value = ""; // Clear input
-        alert("Post Publish Ho Gayi!");
-    } catch (e) {
-        console.error("Error: ", e);
+    });
+}
+
+// --- 7. NOTIFICATIONS LOGIC ---
+window.handleTrust = async function(postId, field, postOwnerId) {
+    if(!auth.currentUser) return alert("Login first!");
+    const postRef = doc(db, "posts", postId);
+    
+    try {
+        await updateDoc(postRef, { [field]: increment(1) });
+        
+        // Notification send karein post owner ko
+        await addDoc(collection(db, "notifications"), {
+            to: postOwnerId,
+            from: auth.currentUser.uid,
+            message: `@${document.getElementById('p-username').value} ne aapke post ko trust kiya!`,
+            timestamp: serverTimestamp(),
+            read: false
+        });
+    } catch (e) { console.error(e); }
+}
+
+// --- 8. BASIC CHAT SYSTEM ---
+window.enterChat = function(postId) {
+    const msg = prompt("Apna message likhein connection ke liye:");
+    if (msg) {
+        addDoc(collection(db, "chats"), {
+            postId: postId,
+            sender: auth.currentUser.uid,
+            senderName: document.getElementById('p-username').value,
+            text: msg,
+            timestamp: serverTimestamp()
+        }).then(() => alert("Message bhej diya gaya! User aapse connect karega."));
     }
 }
-// TRUST BUTTON FUNCTION (Database update ke liye)
-  window.handleTrustClick = async function(postId, type) {
-      if(!auth.currentUser) return alert("Login to vote");
-      const postRef = doc(db, "posts", postId);
-      await updateDoc(postRef, {
-          [type === 'trust' ? 'trustCount' : 'untrustCount']: increment(1)
-      });
-  };
 
-  // LOGIN & SEARCH (Aapka purana code yahan aayega...)
-  // ... (Baaki functions yahan niche add karein)
+  window.saveProfile = async function() {
+      const user = auth.currentUser;
+      const data = {
+          username: document.getElementById('p-username').value.toLowerCase(),
+          fullName: document.getElementById('p-fullname').value,
+          skills: document.getElementById('p-skills').value,
+          updatedAt: serverTimestamp()
+      };
+      await updateDoc(doc(db, "users", user.uid), data);
+      alert("Profile Saved!");
+  }
+
+  async function loadUserProfile() {
+      const docSnap = await getDoc(doc(db, "users", auth.currentUser.uid));
+      if (docSnap.exists()) {
+          const d = docSnap.data();
+          document.getElementById('p-username').value = d.username || "";
+          document.getElementById('p-fullname').value = d.fullName || "";
+          document.getElementById('p-skills').value = d.skills || "";
+      }
+  }
+  
+  window.addNewPost = async function() {
+    const cap = document.getElementById('post-caption').value;
+   const cat = document.getElementById('post-category').value;
+    const userSnap = await getDoc(doc(db, "users", auth.currentUser.uid));
+    const uname = userSnap.data().username;
+    
+    await addDoc(collection(db, "posts"), {
+        caption: cap,
+        category: cat,
+        username: userSnap.data().username,
+        uid: auth.currentUser.uid,
+        trustCount: 0,
+        untrustCount: 0,
+        timestamp: serverTimestamp()
+    });
+    document.getElementById('post-caption').value = "";
+  }
 </script>
 </body>
 </html>
