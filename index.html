@@ -348,5 +348,53 @@ function handleTrustClick(button) {
   const app = initializeApp(firebaseConfig);
   const analytics = getAnalytics(app);
 </script>
+<script type="module">
+  // Firebase libraries ko CDN se import karein (GitHub Pages ke liye yahi sahi hai)
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+  // Aapke screenshot se li gayi config
+  const firebaseConfig = {
+    apiKey: "AIzaSyD7gzrx72gzmFffkIHxMLyKJP1812wvvh8",
+    authDomain: "syncup-web.firebaseapp.com",
+    projectId: "syncup-web",
+    storageBucket: "syncup-web.firebasestorage.app",
+    messagingSenderId: "338126062388",
+    appId: "1:338126062388:web:c12443230d0d4cd1875b61",
+    measurementId: "G-BG3PHV4262"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // Post save karne ka function
+  window.addNewPost = async function() {
+    const caption = document.getElementById('post-caption').value;
+    if (!caption) return alert("Kuch likhiye!");
+
+    try {
+      await addDoc(collection(db, "posts"), {
+        caption: caption,
+        user: "@shreya_coder",
+        timestamp: serverTimestamp()
+      });
+      document.getElementById('post-caption').value = "";
+    } catch (e) {
+      console.error("Error: ", e);
+    }
+  }
+
+  // Real-time posts dikhane ke liye
+  const q = query(collection(db, "posts"), orderBy("timestamp", "desc"));
+  onSnapshot(q, (snapshot) => {
+    const feed = document.getElementById('news-feed');
+    feed.innerHTML = "";
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      feed.insertAdjacentHTML('beforeend', `<div class="post-card"><p>${data.caption}</p></div>`);
+    });
+  });
+</script>
 </body>
 </html>
